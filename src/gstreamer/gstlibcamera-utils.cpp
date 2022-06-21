@@ -158,7 +158,6 @@ colorimerty_from_colorspace(std::optional<ColorSpace> colorSpace)
 		colorimetry.range = GST_VIDEO_COLOR_RANGE_UNKNOWN;
 
 	colorimetry_str = gst_video_colorimetry_to_string(&colorimetry);
-	
 	return colorimetry_str;
 }
 
@@ -209,10 +208,19 @@ gst_libcamera_stream_configuration_to_caps(const StreamConfiguration &stream_cfg
 {
 	GstCaps *caps = gst_caps_new_empty();
 	GstStructure *s = bare_structure_from_format(stream_cfg.pixelFormat);
+	const gchar* colorimetry;
+
+	std::optional<ColorSpace> colorspace = stream_cfg.colorSpace;
+	
+	if(colorspace)
+		colorimetry = colorimerty_from_colorspace(colorspace);
+	else
+		colorimetry = g_strdup("Unset");
 
 	gst_structure_set(s,
 			  "width", G_TYPE_INT, stream_cfg.size.width,
 			  "height", G_TYPE_INT, stream_cfg.size.height,
+			  "colorimetry", G_TYPE_STRING, colorimetry,
 			  nullptr);
 	gst_caps_append_structure(caps, s);
 
