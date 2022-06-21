@@ -8,6 +8,9 @@
 
 #include "gstlibcamera-utils.h"
 
+#include<vector>
+#include<map>
+
 #include <libcamera/formats.h>
 
 using namespace libcamera;
@@ -43,6 +46,34 @@ static struct {
 	{ GST_VIDEO_FORMAT_YVYU, formats::YVYU },
 
 	/* \todo NV42 is used in libcamera but is not mapped in GStreamer yet. */
+};
+
+static const std::vector<std::pair<ColorSpace, std::string >> ColorSpaceTocolorimetry = {
+	{ ColorSpace::Srgb, GST_VIDEO_COLORIMETRY_SRGB},
+	{ ColorSpace::Rec709, GST_VIDEO_COLORIMETRY_BT709},
+	{ ColorSpace::Rec2020, GST_VIDEO_COLORIMETRY_BT2020},
+};
+
+static const std::map<ColorSpace::Primaries, GstVideoColorPrimaries> ToGstVideoColorPrimaries = {
+	{ColorSpace::Primaries::Smpte170m, GST_VIDEO_COLOR_PRIMARIES_SMPTE170M},
+	{ColorSpace::Primaries::Rec709, GST_VIDEO_COLOR_PRIMARIES_BT709},
+	{ColorSpace::Primaries::Rec2020,GST_VIDEO_COLOR_PRIMARIES_BT2020 },
+};
+
+static const std::map<ColorSpace::TransferFunction, GstVideoTransferFunction> ToGstVideoTransferFunction = {
+	{ColorSpace::TransferFunction::Srgb, GST_VIDEO_TRANSFER_SRGB},
+	{ColorSpace::TransferFunction::Rec709, GST_VIDEO_TRANSFER_BT709},
+};
+
+static const std::map<ColorSpace::YcbcrEncoding, GstVideoColorMatrix> ToGstVideoColorMatrix =  {
+	{ColorSpace::YcbcrEncoding::Rec601, GST_VIDEO_COLOR_MATRIX_BT601},
+	{ColorSpace::YcbcrEncoding::Rec709, GST_VIDEO_COLOR_MATRIX_BT709},
+	{ColorSpace::YcbcrEncoding::Rec2020, GST_VIDEO_COLOR_MATRIX_BT2020},
+};
+
+static const std::map<ColorSpace::Range, GstVideoColorRange> ToGstVideoColorRange =  {
+	{ColorSpace::Range::Full, GST_VIDEO_COLOR_RANGE_0_255},
+	{ColorSpace::Range::Limited, GST_VIDEO_COLOR_RANGE_16_235},
 };
 
 static GstVideoFormat
@@ -85,6 +116,50 @@ bare_structure_from_format(const PixelFormat &format)
 	default:
 		return nullptr;
 	}
+}
+
+static const gchar*
+colorimerty_from_colorspace(std::optional<ColorSpace> colorSpace)
+{
+	const gchar *colorimetry_str;
+	GstVideoColorimetry colorimetry;
+
+	auto iterColor = std::find_if(ColorSpaceTocolorimetry.begin(), ColorSpaceTocolorimetry.end(),
+				    [&colorSpace](const auto &item) {
+					    return colorSpace == item.first;
+				    });
+	if(iterColor != ColorSpaceTocolorimetry.end()){
+		colorimetry_str = (gchar*)iterColor->second.c_str();
+		return colorimetry_str;
+	}
+
+	auto iterPrimaries = ToGstVideoColorPrimaries.find(colorSpace->primaries);
+	if(iterPrimaries != ToGstVideoColorPrimaries.end())
+		colorimetry.primaries = iterPrimaries->second;
+	else
+		colorimetry.primaries = GST_VIDEO_COLOR_PRIMARIES_UNKNOWN;
+
+	auto iterTransferFunction = ToGstVideoTransferFunction.find(colorSpace->transferFunction);
+	if(iterTransferFunction != ToGstVideoTransferFunction.end())
+		colorimetry.transfer = iterTransferFunction->second;
+	else
+		colorimetry.transfer = GST_VIDEO_TRANSFER_UNKNOWN;
+
+	auto iterYcbcrEncoding = ToGstVideoColorMatrix.find(colorSpace->ycbcrEncoding);
+	if(iterYcbcrEncoding != ToGstVideoColorMatrix.end())
+		colorimetry.matrix = iterYcbcrEncoding->second;
+	else
+		colorimetry.matrix = GST_VIDEO_COLOR_MATRIX_UNKNOWN;
+
+	auto iterRange = ToGstVideoColorRange.find(colorSpace->range);
+	if(iterRange != ToGstVideoColorRange.end())
+		colorimetry.range = iterRange->second;
+	else
+		colorimetry.range = GST_VIDEO_COLOR_RANGE_UNKNOWN;
+
+	colorimetry_str = gst_video_colorimetry_to_string(&colorimetry);
+	
+	return colorimetry_str;
 }
 
 GstCaps *
