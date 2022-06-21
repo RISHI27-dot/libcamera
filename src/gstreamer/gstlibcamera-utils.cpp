@@ -45,6 +45,12 @@ static struct {
 	/* \todo NV42 is used in libcamera but is not mapped in GStreamer yet. */
 };
 
+static const std::vector<std::pair<ColorSpace, std::string>> ColorSpaceToColorimetry = {
+	{ ColorSpace::Srgb, GST_VIDEO_COLORIMETRY_SRGB },
+	{ ColorSpace::Rec709, GST_VIDEO_COLORIMETRY_BT709 },
+	{ ColorSpace::Rec2020, GST_VIDEO_COLORIMETRY_BT2020 },
+};
+
 static GstVideoFormat
 pixel_format_to_gst_format(const PixelFormat &format)
 {
@@ -85,6 +91,30 @@ bare_structure_from_format(const PixelFormat &format)
 	default:
 		return nullptr;
 	}
+}
+
+static gchar *
+libcamera_colorimetry_to_gst_string(const std::string &colorimetry_str)
+{
+	gchar *colorimetry_gst_string = (gchar *)colorimetry_str.c_str();
+	return colorimetry_gst_string;
+}
+
+static gchar *
+colorimetry_from_colorspace(ColorSpace colorSpace)
+{
+	gchar *colorimetry_gst_string = nullptr;
+
+	auto iterColorimetry = std::find_if(ColorSpaceToColorimetry.begin(), ColorSpaceToColorimetry.end(),
+					    [&colorSpace](const auto &item) {
+						    return colorSpace == item.first;
+					    });
+	if (iterColorimetry != ColorSpaceToColorimetry.end()) {
+		const std::string &colrorimetry_string = iterColorimetry->second;
+		colorimetry_gst_string = libcamera_colorimetry_to_gst_string(colrorimetry_string);
+	}
+		
+	return colorimetry_gst_string;
 }
 
 GstCaps *
