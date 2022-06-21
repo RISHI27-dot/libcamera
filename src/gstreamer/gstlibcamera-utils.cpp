@@ -51,6 +51,12 @@ static const std::map<std::string, ColorSpace> ColorimetryToColorSpace = {
 	{ GST_VIDEO_COLORIMETRY_BT2020, ColorSpace::Rec2020 },
 };
 
+static const std::vector<std::pair<ColorSpace, std::string>> ColorSpaceToColorimetry = {
+	{ ColorSpace::Srgb, GST_VIDEO_COLORIMETRY_SRGB },
+	{ ColorSpace::Rec709, GST_VIDEO_COLORIMETRY_BT709 },
+	{ ColorSpace::Rec2020, GST_VIDEO_COLORIMETRY_BT2020 },
+};
+
 static ColorSpace
 make_default_colorspace(const GstVideoColorimetry default_colorimetry)
 {
@@ -180,6 +186,79 @@ colorspace_from_colorimetry(const gchar *colorimetry_str, const GstVideoColorime
 		break;
 	}
 	return colorSpace_default;
+}
+
+static gchar *
+libcamera_colorimetry_to_gst_string(const std::string &colorimetry_str)
+{
+	gchar *colorimetry_gst_string = (gchar *)colorimetry_str.c_str();
+	return colorimetry_gst_string;
+}
+
+static gchar *
+colorimetry_from_colorspace(ColorSpace colorSpace)
+{
+	gchar *colorimetry_gst_string;
+	GstVideoColorimetry colorimetry;
+
+	auto iterColorimetry = std::find_if(ColorSpaceToColorimetry.begin(), ColorSpaceToColorimetry.end(),
+										[&colorSpace](const auto &item) {
+											return colorSpace == item.first;
+										});
+	if (iterColorimetry != ColorSpaceToColorimetry.end()) {
+		const std::string &colrorimetry_string = iterColorimetry->second;
+		colorimetry_gst_string = libcamera_colorimetry_to_gst_string(colrorimetry_string);
+		return colorimetry_gst_string;
+	}
+			
+	switch (colorSpace.primaries) {
+	case ColorSpace::Primaries::Rec709:
+		colorimetry.primaries = GST_VIDEO_COLOR_PRIMARIES_BT709;
+		break;
+	case ColorSpace::Primaries::Rec2020:
+		colorimetry.primaries = GST_VIDEO_COLOR_PRIMARIES_BT2020;
+		break;
+	case ColorSpace::Primaries::Smpte170m:
+		colorimetry.primaries = GST_VIDEO_COLOR_PRIMARIES_SMPTE170M;
+		break;
+	default:
+		GST_WARNING("Unkown Primaries in colorSpace\n");
+	}
+	switch (colorSpace.transferFunction) {
+	case ColorSpace::TransferFunction::Rec709:
+		colorimetry.transfer = GST_VIDEO_TRANSFER_BT709;
+		break;
+	case ColorSpace::TransferFunction::Srgb:
+		colorimetry.transfer = GST_VIDEO_TRANSFER_SRGB;
+		break;
+	default:
+		GST_WARNING("Unkown Transfer function in colorSpace\n");
+	}
+	switch (colorSpace.ycbcrEncoding) {
+	case ColorSpace::YcbcrEncoding::Rec709:
+		colorimetry.matrix = GST_VIDEO_COLOR_MATRIX_BT709;
+		break;
+	case ColorSpace::YcbcrEncoding::Rec2020:
+		colorimetry.matrix = GST_VIDEO_COLOR_MATRIX_BT2020;
+		break;
+	case ColorSpace::YcbcrEncoding::Rec601:
+		colorimetry.matrix = GST_VIDEO_COLOR_MATRIX_BT601;
+		break;
+	default:
+		GST_WARNING("Unkown YcbcrEncoding in colorSpace\n");
+	}
+	switch (colorSpace.range) {
+	case ColorSpace::Range::Full:
+		colorimetry.range = GST_VIDEO_COLOR_RANGE_0_255;
+		break;
+	case ColorSpace::Range::Limited:
+		colorimetry.range = GST_VIDEO_COLOR_RANGE_16_235;
+		break;
+	default:
+		GST_WARNING("Unkown Range in colorSpace\n");
+	}
+	colorimetry_gst_string = gst_video_colorimetry_to_string(&colorimetry);
+	return colorimetry_gst_string;
 }
 
 static GstVideoFormat
