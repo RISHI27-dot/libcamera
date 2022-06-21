@@ -45,6 +45,12 @@ static struct {
 	/* \todo NV42 is used in libcamera but is not mapped in GStreamer yet. */
 };
 
+static const std::vector<std::pair<ColorSpace, std::string>> ColorSpaceTocolorimetry = {
+	{ ColorSpace::Srgb, GST_VIDEO_COLORIMETRY_SRGB },
+	{ ColorSpace::Rec709, GST_VIDEO_COLORIMETRY_BT709 },
+	{ ColorSpace::Rec2020, GST_VIDEO_COLORIMETRY_BT2020 },
+};
+
 static GstVideoFormat
 pixel_format_to_gst_format(const PixelFormat &format)
 {
@@ -83,6 +89,32 @@ bare_structure_from_format(const PixelFormat &format)
 	case formats::MJPEG:
 		return gst_structure_new_empty("image/jpeg");
 	default:
+		return nullptr;
+	}
+}
+
+static gchar *
+colorimerty_from_colorspace(std::optional<ColorSpace> colorSpace)
+{
+	gchar *colorimetry_str = nullptr;
+	gchar *colorimetry_found = nullptr;
+	GstVideoColorimetry colorimetry;
+	gboolean isColorimetryValid;
+
+	auto iterColorimetry = std::find_if(ColorSpaceTocolorimetry.begin(), ColorSpaceTocolorimetry.end(),
+					    [&colorSpace](const auto &item) {
+						    return colorSpace == item.first;
+					    });
+	if (iterColorimetry != ColorSpaceTocolorimetry.end()) {
+		colorimetry_found = (gchar *)iterColorimetry->second.c_str();
+		isColorimetryValid = gst_video_colorimetry_from_string(&colorimetry, colorimetry_found);
+	}
+	if (isColorimetryValid) {
+		colorimetry_str = gst_video_colorimetry_to_string(&colorimetry);
+		return colorimetry_str;
+	} else {
+		g_free(colorimetry_found);
+		g_free(colorimetry_str);
 		return nullptr;
 	}
 }
