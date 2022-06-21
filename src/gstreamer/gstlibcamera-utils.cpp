@@ -264,11 +264,21 @@ gst_libcamera_stream_configuration_to_caps(const StreamConfiguration &stream_cfg
 {
 	GstCaps *caps = gst_caps_new_empty();
 	GstStructure *s = bare_structure_from_format(stream_cfg.pixelFormat);
+	std::optional<ColorSpace> colorspace = stream_cfg.colorSpace;
+	GstVideoColorimetry colorimetry;
 
 	gst_structure_set(s,
 			  "width", G_TYPE_INT, stream_cfg.size.width,
 			  "height", G_TYPE_INT, stream_cfg.size.height,
 			  nullptr);
+
+	if (colorspace) {
+		ColorSpace colorspaceValue = colorspace.value();
+		colorimetry = colorimetry_from_colorspace(colorspaceValue);
+		gchar *colorimetry_str = gst_video_colorimetry_to_string(&colorimetry);
+		if (colorimetry_str)
+			gst_structure_set(s, "colorimetry", G_TYPE_STRING, colorimetry_str, nullptr);
+	}
 	gst_caps_append_structure(caps, s);
 
 	return caps;
