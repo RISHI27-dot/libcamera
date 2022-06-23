@@ -121,6 +121,7 @@ struct _GstLibcameraSrc {
 	GstTask *task;
 
 	gchar *camera_name;
+	gchar *colorimetry;
 
 	GstLibcameraSrcState *state;
 	GstLibcameraAllocator *allocator;
@@ -129,7 +130,8 @@ struct _GstLibcameraSrc {
 
 enum {
 	PROP_0,
-	PROP_CAMERA_NAME
+	PROP_CAMERA_NAME,
+	PROP_COLORIMETRY
 };
 
 G_DEFINE_TYPE_WITH_CODE(GstLibcameraSrc, gst_libcamera_src, GST_TYPE_ELEMENT,
@@ -532,6 +534,10 @@ gst_libcamera_src_set_property(GObject *object, guint prop_id,
 		g_free(self->camera_name);
 		self->camera_name = g_value_dup_string(value);
 		break;
+	case PROP_COLORIMETRY:
+		g_free(self->colorimetry);
+		self->colorimetry = g_value_dup_string(value);
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
 		break;
@@ -549,6 +555,9 @@ gst_libcamera_src_get_property(GObject *object, guint prop_id, GValue *value,
 	case PROP_CAMERA_NAME:
 		g_value_set_string(value, self->camera_name);
 		break;
+	case PROP_COLORIMETRY:
+		g_value_set_string(value, self->colorimetry);
+		break;		
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
 		break;
@@ -717,4 +726,11 @@ gst_libcamera_src_class_init(GstLibcameraSrcClass *klass)
 							     | G_PARAM_READWRITE
 							     | G_PARAM_STATIC_STRINGS));
 	g_object_class_install_property(object_class, PROP_CAMERA_NAME, spec);
+
+	GParamSpec *spec2 = g_param_spec_string("colorimetry", "Coloirmetry",
+							"Colorimetry of the Stream",nullptr,
+							(GParamFlags)(GST_PARAM_MUTABLE_READY
+								 | G_PARAM_READWRITE
+								 | G_PARAM_STATIC_STRINGS));
+	g_object_class_install_property(object_class,PROP_COLORIMETRY,spec2);
 }
