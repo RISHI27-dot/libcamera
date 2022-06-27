@@ -51,6 +51,12 @@ static const std::vector<std::pair<ColorSpace, std::string>> ColorSpaceTocolorim
 	{ ColorSpace::Rec2020, GST_VIDEO_COLORIMETRY_BT2020 },
 };
 
+static const std::map<std::string, ColorSpace> colorimetryToColorSpace = {
+	{ GST_VIDEO_COLORIMETRY_SRGB, ColorSpace::Srgb },
+	{ GST_VIDEO_COLORIMETRY_BT709, ColorSpace::Rec709 },
+	{ GST_VIDEO_COLORIMETRY_BT2020, ColorSpace::Rec2020 },
+};
+
 static GstVideoFormat
 pixel_format_to_gst_format(const PixelFormat &format)
 {
@@ -116,6 +122,15 @@ colorimerty_from_colorspace(std::optional<ColorSpace> colorSpace)
 		g_free(colorimetry_found);
 		g_free(colorimetry_str);
 		return nullptr;
+	}
+}
+
+void colorspace_form_colorimetry(std::optional<ColorSpace> &colorspace, const gchar *colorimetry)
+{
+	auto iterColorSpace = colorimetryToColorSpace.find(colorimetry);
+	if (iterColorSpace != colorimetryToColorSpace.end()) {
+		colorspace = iterColorSpace->second;
+		return;
 	}
 }
 
