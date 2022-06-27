@@ -73,6 +73,12 @@ static const std::map<ColorSpace::Range, GstVideoColorRange> ToGstVideoColorRang
 	{ ColorSpace::Range::Limited, GST_VIDEO_COLOR_RANGE_16_235 },
 };
 
+static const std::map<std::string, ColorSpace> colorimetryToColorSpace = {
+	{ GST_VIDEO_COLORIMETRY_SRGB, ColorSpace::Srgb },
+	{ GST_VIDEO_COLORIMETRY_BT709, ColorSpace::Rec709 },
+	{ GST_VIDEO_COLORIMETRY_BT2020, ColorSpace::Rec2020 },
+};
+
 static GstVideoFormat
 pixel_format_to_gst_format(const PixelFormat &format)
 {
@@ -156,6 +162,15 @@ colorimerty_from_colorspace(std::optional<ColorSpace> colorSpace)
 
 	colorimetry_str = gst_video_colorimetry_to_string(&colorimetry);
 	return colorimetry_str;
+}
+
+void colorspace_form_colorimetry(std::optional<ColorSpace> &colorspace, const gchar *colorimetry)
+{
+	auto iterColorSpace = colorimetryToColorSpace.find(colorimetry);
+	if (iterColorSpace != colorimetryToColorSpace.end()) {
+		colorspace = iterColorSpace->second;
+		return;
+	}
 }
 
 GstCaps *
