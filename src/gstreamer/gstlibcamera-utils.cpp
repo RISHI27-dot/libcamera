@@ -167,11 +167,11 @@ colorimerty_from_colorspace(std::optional<ColorSpace> colorSpace)
 	return colorimetry_str;
 }
 
-void colorspace_form_colorimetry(std::optional<ColorSpace>* colorspace, const gchar* colorimetry){
+void colorspace_form_colorimetry(std::optional<ColorSpace> &colorspace, const gchar* colorimetry){
 
 	auto iterColorSpace = colorimetryToColorSpace.find(colorimetry);
 	if(iterColorSpace != colorimetryToColorSpace.end()){
-				*colorspace = iterColorSpace->second;
+				colorspace = iterColorSpace->second;
 		return;
 	}
 

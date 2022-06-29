@@ -387,7 +387,16 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	for (gsize i = 0; i < state->srcpads_.size(); i++) {
 		GstPad *srcpad = state->srcpads_[i];
 		StreamConfiguration &stream_cfg = state->config_->at(i);
-
+		gchar* colorimetry;
+		g_object_get(self,
+			"colorimetry", &colorimetry,
+			NULL);
+		if (colorimetry != nullptr){
+			std::optional<ColorSpace> &colorSpace = stream_cfg.colorSpace;
+			colorspace_form_colorimetry(colorSpace, colorimetry);
+			g_print("applied the colorspace %s to the stream",(gchar*)ColorSpace::toString(stream_cfg.colorSpace).c_str());
+		}
+		
 		/* Retrieve the supported caps. */
 		g_autoptr(GstCaps) filter = gst_libcamera_stream_formats_to_caps(stream_cfg.formats());
 		g_autoptr(GstCaps) caps = gst_pad_peer_query_caps(srcpad, filter);
@@ -417,15 +426,6 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	for (gsize i = 0; i < state->srcpads_.size(); i++) {
 		GstPad *srcpad = state->srcpads_[i];
 		const StreamConfiguration &stream_cfg = state->config_->at(i);
-		gchar* colorimetry;
-		g_object_get(self,
-			"colorimetry", &colorimetry,
-			NULL);
-
-		if (colorimetry != nullptr){
-			std::optional<ColorSpace> colorSpace = stream_cfg.colorSpace;
-			colorspace_form_colorimetry(&colorSpace, colorimetry);
-		}
 		
 		g_autoptr(GstCaps) caps = gst_libcamera_stream_configuration_to_caps(stream_cfg);
 		if (!gst_pad_push_event(srcpad, gst_event_new_caps(caps))) {
