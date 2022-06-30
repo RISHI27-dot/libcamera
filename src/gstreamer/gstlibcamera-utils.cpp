@@ -72,8 +72,8 @@ static const std::map<ColorSpace::YcbcrEncoding, GstVideoColorMatrix> ToGstVideo
 };
 
 static const std::map<ColorSpace::Range, GstVideoColorRange> ToGstVideoColorRange =  {
-	{ColorSpace::Range::Full, GST_VIDEO_COLOR_RANGE_0_255},
 	{ColorSpace::Range::Limited, GST_VIDEO_COLOR_RANGE_16_235},
+	{ColorSpace::Range::Full, GST_VIDEO_COLOR_RANGE_0_255},
 };
 
 static const std::map<std::string, ColorSpace > colorimetryToColorSpace = {
@@ -171,10 +171,12 @@ void colorspace_form_colorimetry(std::optional<ColorSpace> &colorspace, const gc
 
 	auto iterColorSpace = colorimetryToColorSpace.find(colorimetry);
 	if(iterColorSpace != colorimetryToColorSpace.end()){
-				colorspace = iterColorSpace->second;
+		colorspace = iterColorSpace->second;
 		return;
 	}
-
+	else{
+		GST_WARNING("Unsupported colorimetry %s",colorimetry);
+	}
 }
 
 GstCaps *

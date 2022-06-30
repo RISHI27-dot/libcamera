@@ -394,7 +394,8 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		if (colorimetry != nullptr){
 			std::optional<ColorSpace> &colorSpace = stream_cfg.colorSpace;
 			colorspace_form_colorimetry(colorSpace, colorimetry);
-			g_print("applied the colorspace %s to the stream",(gchar*)ColorSpace::toString(stream_cfg.colorSpace).c_str());
+			g_print("Applied the colorspace %s to the stream",
+			       (gchar*)ColorSpace::toString(stream_cfg.colorSpace).c_str());
 		}
 		
 		/* Retrieve the supported caps. */
