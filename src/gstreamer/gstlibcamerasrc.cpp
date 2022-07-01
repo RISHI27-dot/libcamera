@@ -394,8 +394,6 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		if (colorimetry != nullptr){
 			std::optional<ColorSpace> &colorSpace = stream_cfg.colorSpace;
 			colorspace_form_colorimetry(colorSpace, colorimetry);
-			g_print("Applied the colorspace %s to the stream",
-			       (gchar*)ColorSpace::toString(stream_cfg.colorSpace).c_str());
 		}
 		
 		/* Retrieve the supported caps. */
@@ -419,7 +417,11 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		flow_ret = GST_FLOW_NOT_NEGOTIATED;
 		goto done;
 	}
-
+	
+	for (gsize i = 0; i < state->srcpads_.size(); i++){
+		const StreamConfiguration &stream_cfg = state->config_->at(i);
+		g_print("applied the colorspace %s to the stream",(gchar*)ColorSpace::toString(stream_cfg.colorSpace).c_str());
+	}
 	/*
 	 * Regardless if it has been modified, create clean caps and push the
 	 * caps event. Downstream will decide if the caps are acceptable.
