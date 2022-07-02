@@ -279,6 +279,13 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 		g_critical("Unsupported media type: %s", gst_structure_get_name(s));
 	}
 
+	/* Configure colorSpace */
+	if (gst_structure_has_field(s, "colorimetry")) {
+		const gchar *colorimetry = gst_structure_get_string(s, "colorimetry");
+		std::optional<ColorSpace> &colorSpace = stream_cfg.colorSpace;
+		colorspace_form_colorimetry(colorSpace, colorimetry);
+	}
+
 	gint width, height;
 	gst_structure_get_int(s, "width", &width);
 	gst_structure_get_int(s, "height", &height);
