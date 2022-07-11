@@ -461,6 +461,8 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	GstLibcameraSrcState *state = self->state;
 	GstFlowReturn flow_ret = GST_FLOW_OK;
 	gint ret;
+	std::vector<std::optional<ColorSpace>> prevColorSpaces;
+	std::vector<std::optional<ColorSpace>> appliedColorSpaces;
 
 	GST_DEBUG_OBJECT(self, "Streaming thread has started");
 
@@ -501,9 +503,13 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 			break;
 		}
 
+		/*Store the colorSpaces applied per pad. */
+		prevColorSpaces.push_back(stream_cfg.colorSpace);
+
 		/* Fixate caps and configure the stream. */
 		caps = gst_caps_make_writable(caps);
 		gst_libcamera_configure_stream_from_caps(stream_cfg, caps);
+		appliedColorSpaces.push_back(stream_cfg.colorSpace);
 	}
 
 	if (flow_ret != GST_FLOW_OK)
@@ -515,6 +521,12 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		goto done;
 	}
 
+	for (gsize i = 0; i < state->srcpads_.size(); i++) {
+		StreamConfiguration &stream_cfg = state->config_->at(i);
+
+		if (stream_cfg.colorSpace != appliedColorSpaces[i])
+			stream_cfg.colorSpace = prevColorSpaces[i];
+	}
 	/*
 	 * Regardless if it has been modified, create clean caps and push the
 	 * caps event. Downstream will decide if the caps are acceptable.
