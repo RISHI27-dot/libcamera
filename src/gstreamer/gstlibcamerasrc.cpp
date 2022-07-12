@@ -501,9 +501,12 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 			break;
 		}
 
-		std::optional<ColorSpace> &colorSpace  = stream_cfg.colorSpace;
-
-		colorSpace.primaries = Primaries.Smpte170m;
+		ColorSpace colorSpaceNew(ColorSpace::Primaries::Smpte170m,
+											ColorSpace::TransferFunction::Linear,
+											ColorSpace::YcbcrEncoding::Rec601,
+											ColorSpace::Range::Full);
+		// std::optional<ColorSpace> colorSpace = colorSpaceNew;
+		stream_cfg.colorSpace = colorSpaceNew;
 		// colorSpace.transferFunction = 
 		// colorSpace.ycbcrEncoding = 
 		// colorSpace.range = 
