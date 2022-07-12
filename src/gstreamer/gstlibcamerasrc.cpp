@@ -501,6 +501,14 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 			break;
 		}
 
+		std::optional<ColorSpace> &colorSpace  = stream_cfg.colorSpace;
+
+		colorSpace.primaries = Primaries.Smpte170m;
+		// colorSpace.transferFunction = 
+		// colorSpace.ycbcrEncoding = 
+		// colorSpace.range = 
+
+
 		/* Fixate caps and configure the stream. */
 		caps = gst_caps_make_writable(caps);
 		gst_libcamera_configure_stream_from_caps(stream_cfg, caps);
