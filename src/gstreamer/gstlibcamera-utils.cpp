@@ -216,6 +216,25 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 	} else {
 		g_critical("Unsupported media type: %s", gst_structure_get_name(s));
 	}
+  /* Configure colorSpace */
+   	if (gst_structure_has_field(s, "colorimetry")) {
+		GstVideoInfo info;
+		gint width, height;
+		GstVideoFormat gst_format_final;
+		const gchar *colorimetry_in_caps = gst_structure_get_string(s, "colorimetry");
+
+		gst_video_info_init(&info);
+		gst_structure_get_int(s, "width", &width);
+		gst_structure_get_int(s, "height", &height);
+		const gchar *format = gst_structure_get_string(s, "format");
+		gst_format_final = gst_video_format_from_string(format);
+		gst_video_info_set_format(&info, gst_format_final, width, height);
+		const GstVideoColorimetry colorimetry_default = info.colorimetry;
+
+		std::optional<ColorSpace> colorSpace =
+			colorspace_from_colorimetry(colorimetry_in_caps, colorimetry_default);
+		stream_cfg.colorSpace = colorSpace;
+	}
 
 	gint width, height;
 	gst_structure_get_int(s, "width", &width);
