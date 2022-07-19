@@ -45,6 +45,136 @@ static struct {
 	/* \todo NV42 is used in libcamera but is not mapped in GStreamer yet. */
 };
 
+static const std::map<GstVideoColorPrimaries, ColorSpace::Primaries> GstPrimariesToLibcameraPrimaries = {
+	{ GST_VIDEO_COLOR_PRIMARIES_SMPTE170M, ColorSpace::Primaries::Smpte170m },
+	{ GST_VIDEO_COLOR_PRIMARIES_BT709, ColorSpace::Primaries::Rec709 },
+	{ GST_VIDEO_COLOR_PRIMARIES_BT2020, ColorSpace::Primaries::Rec2020 },
+};
+
+static const std::map<GstVideoTransferFunction, ColorSpace::TransferFunction> GstTransferToLibcameraTransfer = {
+	{ GST_VIDEO_TRANSFER_SRGB, ColorSpace::TransferFunction::Srgb },
+	{ GST_VIDEO_TRANSFER_BT709, ColorSpace::TransferFunction::Rec709 },
+};
+
+static const std::map<GstVideoColorMatrix, ColorSpace::YcbcrEncoding> GstColorMatrixToLibcameraYcbcrEncoding = {
+	{ GST_VIDEO_COLOR_MATRIX_BT601, ColorSpace::YcbcrEncoding::Rec601 },
+	{ GST_VIDEO_COLOR_MATRIX_BT709, ColorSpace::YcbcrEncoding::Rec709 },
+	{ GST_VIDEO_COLOR_MATRIX_BT2020, ColorSpace::YcbcrEncoding::Rec2020 },
+};
+
+static const std::map<GstVideoColorRange, ColorSpace::Range> GstRangeToLibcameraRange = {
+	{ GST_VIDEO_COLOR_RANGE_0_255, ColorSpace::Range::Full },
+	{ GST_VIDEO_COLOR_RANGE_16_235, ColorSpace::Range::Limited },
+};
+
+static const std::map<ColorSpace::Primaries, GstVideoColorPrimaries> LibcameraPrimariesToGstPrimaries = {
+	{ ColorSpace::Primaries::Smpte170m, GST_VIDEO_COLOR_PRIMARIES_SMPTE170M },
+	{ ColorSpace::Primaries::Rec709, GST_VIDEO_COLOR_PRIMARIES_BT709 },
+	{ ColorSpace::Primaries::Rec2020, GST_VIDEO_COLOR_PRIMARIES_BT2020 },
+};
+
+static const std::map<ColorSpace::TransferFunction, GstVideoTransferFunction> LibcameraTransferToGstTransfer = {
+	{ ColorSpace::TransferFunction::Srgb, GST_VIDEO_TRANSFER_SRGB },
+	{ ColorSpace::TransferFunction::Rec709, GST_VIDEO_TRANSFER_BT709 },
+};
+
+static const std::map<ColorSpace::YcbcrEncoding, GstVideoColorMatrix> LibcameraYcbcrEncodingToGstColorMatrix = {
+	{ ColorSpace::YcbcrEncoding::Rec601, GST_VIDEO_COLOR_MATRIX_BT601 },
+	{ ColorSpace::YcbcrEncoding::Rec709, GST_VIDEO_COLOR_MATRIX_BT709 },
+	{ ColorSpace::YcbcrEncoding::Rec2020, GST_VIDEO_COLOR_MATRIX_BT2020 },
+};
+
+static const std::map<ColorSpace::Range, GstVideoColorRange> LibcameraRangeToGstRange = {
+	{ ColorSpace::Range::Full, GST_VIDEO_COLOR_RANGE_0_255 },
+	{ ColorSpace::Range::Limited, GST_VIDEO_COLOR_RANGE_16_235 },
+};
+
+static std::optional<ColorSpace>
+colorspace_from_colorimetry(GstVideoColorimetry colorimetry)
+{
+	ColorSpace::Primaries primaries;
+	ColorSpace::TransferFunction transferFunction;
+	ColorSpace::YcbcrEncoding ycbcrEncoding;
+	ColorSpace::Range range;
+
+	gchar *colorimetry_str = 
+		gst_video_colorimetry_to_string(&colorimetry);
+
+	auto iterPrimaries =
+		GstPrimariesToLibcameraPrimaries.find(colorimetry.primaries);
+	if (iterPrimaries != GstPrimariesToLibcameraPrimaries.end())
+		primaries = iterPrimaries->second;
+	else
+		GST_WARNING("Unknown primaries %d in colorimetry %s\n",
+					colorimetry.primaries,colorimetry_str);
+
+	auto iterTransferFunction =
+		GstTransferToLibcameraTransfer.find(colorimetry.transfer);
+	if (iterTransferFunction != GstTransferToLibcameraTransfer.end())
+		transferFunction = iterTransferFunction->second;
+	else
+		GST_WARNING("Unknown transfer %d in colorimetry %s\n",
+					colorimetry.transfer,colorimetry_str);
+
+	auto iterYcbcrEncoding =
+		GstColorMatrixToLibcameraYcbcrEncoding.find(colorimetry.matrix);
+	if (iterYcbcrEncoding != GstColorMatrixToLibcameraYcbcrEncoding.end())
+		ycbcrEncoding = iterYcbcrEncoding->second;
+	else
+		GST_WARNING("Unknown matrix %d in colorimetry %s\n",
+					colorimetry.matrix, colorimetry_str);
+
+	auto iterRange =
+		GstRangeToLibcameraRange.find(colorimetry.range);
+	if (iterRange != GstRangeToLibcameraRange.end())
+		range = iterRange->second;
+	else
+		GST_WARNING("Unknown range %d in colorimetry %s\n",
+					colorimetry.range, colorimetry_str);
+
+	ColorSpace colorSpace(primaries, transferFunction, ycbcrEncoding, range);
+	g_free(colorimetry_str);
+
+	return colorSpace;
+}
+
+static GstVideoColorimetry
+colorimetry_from_colorspace(ColorSpace colorSpace)
+{
+	GstVideoColorimetry colorimetry;
+	gchar *colorspace_str = (gchar*)colorSpace.toString().c_str();
+
+	auto iterPrimaries =
+		LibcameraPrimariesToGstPrimaries.find(colorSpace.primaries);
+	if (iterPrimaries != LibcameraPrimariesToGstPrimaries.end())
+		colorimetry.primaries = iterPrimaries->second;
+	else
+		GST_WARNING("Unknown Primaries in %s\n",colorspace_str);
+
+	auto iterTransferFunction =
+		LibcameraTransferToGstTransfer.find(colorSpace.transferFunction);
+	if (iterTransferFunction != LibcameraTransferToGstTransfer.end())
+		colorimetry.transfer = iterTransferFunction->second;
+	else
+		GST_WARNING("Unknown TransferFunction in %s\n",colorspace_str);
+
+	auto iterYcbcrEncoding =
+		LibcameraYcbcrEncodingToGstColorMatrix.find(colorSpace.ycbcrEncoding);
+	if (iterYcbcrEncoding != LibcameraYcbcrEncodingToGstColorMatrix.end())
+		colorimetry.matrix = iterYcbcrEncoding->second;
+	else
+		GST_WARNING("Unknown YcbcrEncoding in %s\n",colorspace_str);
+
+	auto iterRange =
+		LibcameraRangeToGstRange.find(colorSpace.range);
+	if (iterRange != LibcameraRangeToGstRange.end())
+		colorimetry.range = iterRange->second;
+	else
+		GST_WARNING("Unknown Range in %s\n",colorspace_str);
+
+	return colorimetry;
+}
+
 static GstVideoFormat
 pixel_format_to_gst_format(const PixelFormat &format)
 {
