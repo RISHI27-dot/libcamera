@@ -277,6 +277,7 @@ gst_libcamera_stream_configuration_to_caps(const StreamConfiguration &stream_cfg
 		ColorSpace colorspaceValue = colorspace.value();
 		colorimetry = colorimetry_from_colorspace(colorspaceValue);
 		gchar *colorimetry_str = gst_video_colorimetry_to_string(&colorimetry);
+		g_print("colorimetry after validation (one set in caps) = %s\n", colorimetry_str);
 		if (colorimetry_str)
 			gst_structure_set(s, "colorimetry", G_TYPE_STRING, colorimetry_str, nullptr);
 	}
@@ -363,10 +364,14 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 		GstVideoColorimetry colorimetry;
 		gboolean isColorimetryValid =
 			gst_video_colorimetry_from_string(&colorimetry, colorimetry_in_caps);
-
+		
+		g_print("colorimetry in caps = %s",colorimetry_in_caps);
 		if (isColorimetryValid) {
 			std::optional<ColorSpace> colorSpace = colorspace_from_colorimetry(colorimetry);
 			stream_cfg.colorSpace = colorSpace;
+			const std::optional<ColorSpace> &color = stream_cfg.colorSpace;
+			g_print("colorspace before validation = %s\n",(gchar*)ColorSpace::toString(color).c_str());
+
 		} else {
 			g_print("invalid colorimetry\n");
 		}
