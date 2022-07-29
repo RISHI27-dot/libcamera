@@ -45,6 +45,146 @@ static struct {
 	/* \todo NV42 is used in libcamera but is not mapped in GStreamer yet. */
 };
 
+static GstVideoColorimetry
+colorimetry_from_colorspace(const ColorSpace &colorSpace)
+{
+	GstVideoColorimetry colorimetry;
+
+	switch (colorSpace.primaries) {
+	case ColorSpace::Primaries::Rec709:
+		colorimetry.primaries = GST_VIDEO_COLOR_PRIMARIES_BT709;
+		break;
+	case ColorSpace::Primaries::Rec2020:
+		colorimetry.primaries = GST_VIDEO_COLOR_PRIMARIES_BT2020;
+		break;
+	case ColorSpace::Primaries::Smpte170m:
+		colorimetry.primaries = GST_VIDEO_COLOR_PRIMARIES_SMPTE170M;
+		break;
+	case ColorSpace::Primaries::Raw:
+		colorimetry.primaries = GST_VIDEO_COLOR_PRIMARIES_UNKNOWN;
+		break;
+	}
+
+	switch (colorSpace.transferFunction) {
+	case ColorSpace::TransferFunction::Rec709:
+		colorimetry.transfer = GST_VIDEO_TRANSFER_BT709;
+		break;
+	case ColorSpace::TransferFunction::Srgb:
+		colorimetry.transfer = GST_VIDEO_TRANSFER_SRGB;
+		break;
+	case ColorSpace::TransferFunction::Linear:
+		colorimetry.transfer = GST_VIDEO_TRANSFER_GAMMA10;
+		break;
+	}
+
+	switch (colorSpace.ycbcrEncoding) {
+	case ColorSpace::YcbcrEncoding::None:
+		colorimetry.matrix = GST_VIDEO_COLOR_MATRIX_RGB;
+		break;
+	case ColorSpace::YcbcrEncoding::Rec709:
+		colorimetry.matrix = GST_VIDEO_COLOR_MATRIX_BT709;
+		break;
+	case ColorSpace::YcbcrEncoding::Rec2020:
+		colorimetry.matrix = GST_VIDEO_COLOR_MATRIX_BT2020;
+		break;
+	case ColorSpace::YcbcrEncoding::Rec601:
+		if (colorSpace == ColorSpace::Srgb)
+			colorimetry.matrix = GST_VIDEO_COLOR_MATRIX_RGB;
+		else
+			colorimetry.matrix = GST_VIDEO_COLOR_MATRIX_BT601;
+		break;
+	}
+
+	switch (colorSpace.range) {
+	case ColorSpace::Range::Full:
+		colorimetry.range = GST_VIDEO_COLOR_RANGE_0_255;
+		break;
+	case ColorSpace::Range::Limited:
+		colorimetry.range = GST_VIDEO_COLOR_RANGE_16_235;
+		break;
+	}
+
+	return colorimetry;
+}
+
+static ColorSpace
+colorspace_from_colorimetry(const GstVideoColorimetry &colorimetry)
+{
+	ColorSpace colorspace = ColorSpace::Raw;
+
+	switch (colorimetry.primaries) {
+	case GST_VIDEO_COLOR_PRIMARIES_BT709:
+		colorspace.primaries = ColorSpace::Primaries::Rec709;
+		break;
+	case GST_VIDEO_COLOR_PRIMARIES_BT2020:
+		colorspace.primaries = ColorSpace::Primaries::Rec2020;
+		break;
+	case GST_VIDEO_COLOR_PRIMARIES_SMPTE170M:
+		colorspace.primaries = ColorSpace::Primaries::Smpte170m;
+		break;
+	case GST_VIDEO_COLOR_PRIMARIES_UNKNOWN:
+		/* Unknown primaries map to raw colorspace in gstreamer */
+		return colorspace;
+	default:
+		g_error("Unsupported colorimetry primaries: %d", colorimetry.primaries);
+	}
+
+	switch (colorimetry.transfer) {
+	/* Transfer function mappings inspired from v4l2src plugin */
+	case GST_VIDEO_TRANSFER_GAMMA18:
+	case GST_VIDEO_TRANSFER_GAMMA20:
+	case GST_VIDEO_TRANSFER_GAMMA22:
+	case GST_VIDEO_TRANSFER_GAMMA28:
+		GST_WARNING("GAMMA 18, 20, 22, 28 transfer functions not supported");
+	/* fallthrough */
+	case GST_VIDEO_TRANSFER_GAMMA10:
+		colorspace.transferFunction = ColorSpace::TransferFunction::Linear;
+		break;
+	case GST_VIDEO_TRANSFER_BT601:
+	case GST_VIDEO_TRANSFER_BT2020_12:
+	case GST_VIDEO_TRANSFER_BT2020_10:
+	case GST_VIDEO_TRANSFER_BT709:
+		colorspace.transferFunction = ColorSpace::TransferFunction::Rec709;
+		break;
+	case GST_VIDEO_TRANSFER_SRGB:
+		colorspace.transferFunction = ColorSpace::TransferFunction::Srgb;
+		break;
+	default:
+		g_error("Unsupported colorimetry transfer function: %d", colorimetry.transfer);
+	}
+
+	switch (colorimetry.matrix) {
+	/* FCC is about the same as BT601 with less digit */
+	case GST_VIDEO_COLOR_MATRIX_FCC:
+	case GST_VIDEO_COLOR_MATRIX_BT601:
+	/* v4l2_ycbcr_encoding of sRGB is ENC_601 in the kernel */
+	case GST_VIDEO_COLOR_MATRIX_RGB:
+		colorspace.ycbcrEncoding = ColorSpace::YcbcrEncoding::Rec601;
+		break;
+	case GST_VIDEO_COLOR_MATRIX_BT709:
+		colorspace.ycbcrEncoding = ColorSpace::YcbcrEncoding::Rec709;
+		break;
+	case GST_VIDEO_COLOR_MATRIX_BT2020:
+		colorspace.ycbcrEncoding = ColorSpace::YcbcrEncoding::Rec2020;
+		break;
+	default:
+		g_error("Unsupported colorimetry matrix: %d", colorimetry.matrix);
+	}
+
+	switch (colorimetry.range) {
+	case GST_VIDEO_COLOR_RANGE_0_255:
+		colorspace.range = ColorSpace::Range::Full;
+		break;
+	case GST_VIDEO_COLOR_RANGE_16_235:
+		colorspace.range = ColorSpace::Range::Limited;
+		break;
+	default:
+		g_error("Unsupported colorimetry range %d", colorimetry.range);
+	}
+
+	return colorspace;
+}
+
 static GstVideoFormat
 pixel_format_to_gst_format(const PixelFormat &format)
 {
@@ -139,6 +279,18 @@ gst_libcamera_stream_configuration_to_caps(const StreamConfiguration &stream_cfg
 			  "width", G_TYPE_INT, stream_cfg.size.width,
 			  "height", G_TYPE_INT, stream_cfg.size.height,
 			  nullptr);
+
+	if (stream_cfg.colorSpace) {
+		GstVideoColorimetry colorimetry = colorimetry_from_colorspace(stream_cfg.colorSpace.value());
+		gchar *colorimetry_str = gst_video_colorimetry_to_string(&colorimetry);
+
+		if (colorimetry_str)
+			gst_structure_set(s, "colorimetry", G_TYPE_STRING, colorimetry_str, nullptr);
+		else
+			g_error("Got invalid colorimetry from ColorSpace: %s",
+				ColorSpace::toString(stream_cfg.colorSpace).c_str());
+	}
+
 	gst_caps_append_structure(caps, s);
 
 	return caps;
@@ -222,6 +374,18 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 	gst_structure_get_int(s, "height", &height);
 	stream_cfg.size.width = width;
 	stream_cfg.size.height = height;
+
+	/* Configure colorimetry */
+	if (gst_structure_has_field(s, "colorimetry")) {
+		const gchar *colorimetry_caps = gst_structure_get_string(s, "colorimetry");
+		GstVideoColorimetry colorimetry;
+
+		if(gst_video_colorimetry_from_string(&colorimetry, colorimetry_caps)) {
+			stream_cfg.colorSpace = colorspace_from_colorimetry(colorimetry);
+		} else {
+			g_critical("Invalid colorimetry %s", colorimetry_caps);
+		}
+	}
 }
 
 #if !GST_CHECK_VERSION(1, 17, 1)
