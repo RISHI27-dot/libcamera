@@ -39,6 +39,8 @@
 #include <libcamera/control_ids.h>
 
 #include <gst/base/base.h>
+#include "gst/gstcaps.h"
+#include "gst/gststructure.h"
 
 #include "gstlibcameraallocator.h"
 #include "gstlibcamerapad.h"
@@ -490,8 +492,10 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	g_assert(state->config_->size() == state->srcpads_.size());
 
 	for (gsize i = 0; i < state->srcpads_.size(); i++) {
+		gint colorimetry_index;
 		GstPad *srcpad = state->srcpads_[i];
 		StreamConfiguration &stream_cfg = state->config_->at(i);
+		guint j;
 
 		/* Retrieve the supported caps. */
 		g_autoptr(GstCaps) filter = gst_libcamera_stream_formats_to_caps(stream_cfg.formats());
@@ -503,7 +507,20 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 
 		/* Fixate caps and configure the stream. */
 		caps = gst_caps_make_writable(caps);
-		gst_libcamera_configure_stream_from_caps(stream_cfg, caps);
+		colorimetry_index = gst_libcamera_configure_stream_from_caps(stream_cfg, caps);
+
+		GstCaps *ncaps = gst_caps_copy_nth(caps, colorimetry_index);
+		ncaps = gst_caps_normalize(ncaps);
+		
+		for (j = 0; j < gst_caps_get_size(ncaps); j++) {
+			GstStructure *s = gst_caps_get_structure(caps, j);
+			gst_libcamera_configure_colorspace_from_caps(stream_cfg, s);
+			const gchar *colorimetry_str = gst_structure_get_string(s,"colorimetry");
+			if (state->config_->validate() != CameraConfiguration::Invalid)	{
+				//todo	
+			}
+			
+		}
 	}
 
 	if (flow_ret != GST_FLOW_OK)

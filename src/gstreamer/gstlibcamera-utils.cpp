@@ -10,6 +10,7 @@
 
 #include <libcamera/formats.h>
 #include "gst/gstcaps.h"
+#include "gst/gststructure.h"
 
 using namespace libcamera;
 
@@ -297,7 +298,7 @@ gst_libcamera_stream_configuration_to_caps(const StreamConfiguration &stream_cfg
 	return caps;
 }
 
-void
+gint
 gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 					 GstCaps *caps)
 {
@@ -379,24 +380,22 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 	gst_structure_get_int(s, "height", &height);
 	stream_cfg.size.width = width;
 	stream_cfg.size.height = height;
+	
+	return colorimetry_index;
+}
 
-	/* Configure colorimetry */
-		
+void
+gst_libcamera_configure_colorspace_from_caps(StreamConfiguration &stream_cfg,
+					 GstStructure *s)
+{
 	if (gst_structure_has_field(s, "colorimetry")) {
-		GstCaps *ncaps = gst_caps_copy_nth(caps, colorimetry_index);
-		ncaps = gst_caps_normalize(ncaps);
-		for (i = 0; i < gst_caps_get_size(ncaps); i++) {
-			GstStructure *nstructure = gst_caps_get_structure(ncaps, i);
-			const gchar *colorimetry_caps = gst_structure_get_string(nstructure, "colorimetry");
-			GstVideoColorimetry colorimetry;
-			if(gst_video_colorimetry_from_string(&colorimetry, colorimetry_caps)) {
-				stream_cfg.colorSpace = colorspace_from_colorimetry(colorimetry);
-			} else {
-				g_critical("Invalid colorimetry %s", colorimetry_caps);
-			}
+		const gchar *colorimetry_caps = gst_structure_get_string(s, "colorimetry");
+		GstVideoColorimetry colorimetry;
+		if(gst_video_colorimetry_from_string(&colorimetry, colorimetry_caps)) {
+			stream_cfg.colorSpace = colorspace_from_colorimetry(colorimetry);
+		} else {
+			g_critical("Invalid colorimetry %s", colorimetry_caps);
 		}
-
-
 	}
 }
 
