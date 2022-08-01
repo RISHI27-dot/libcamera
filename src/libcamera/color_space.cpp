@@ -254,16 +254,13 @@ const ColorSpace ColorSpace::Jpeg = {
 };
 
 /**
- * \brief A constant representing the sRGB color space
- *
- * This is identical to the JPEG color space except that the Y'CbCr
- * range is limited rather than full.
+ * \brief A constant representing the sRGB color space (non-YUV format)
  */
 const ColorSpace ColorSpace::Srgb = {
 	Primaries::Rec709,
 	TransferFunction::Srgb,
-	YcbcrEncoding::Rec601,
-	Range::Limited
+	YcbcrEncoding::None,
+	Range::Full
 };
 
 /**
