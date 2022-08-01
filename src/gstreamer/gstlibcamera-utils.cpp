@@ -9,6 +9,7 @@
 #include "gstlibcamera-utils.h"
 
 #include <libcamera/formats.h>
+#include "gst/gstcaps.h"
 
 using namespace libcamera;
 
@@ -302,7 +303,7 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 {
 	GstVideoFormat gst_format = pixel_format_to_gst_format(stream_cfg.pixelFormat);
 	guint i;
-	gint best_fixed = -1, best_in_range = -1;
+	gint best_fixed = -1, best_in_range = -1, colorimetry_index = -1;
 	GstStructure *s;
 
 	/*
@@ -348,15 +349,19 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 	}
 
 	/* Prefer reliable fixed value over ranges */
-	if (best_fixed >= 0)
+	if (best_fixed >= 0) {
 		s = gst_caps_get_structure(caps, best_fixed);
-	else
+		colorimetry_index = best_fixed;
+	} else {
 		s = gst_caps_get_structure(caps, best_in_range);
+		colorimetry_index = best_in_range;
+	}
 
 	if (gst_structure_has_name(s, "video/x-raw")) {
 		const gchar *format = gst_video_format_to_string(gst_format);
 		gst_structure_fixate_field_string(s, "format", format);
 	}
+
 
 	/* Then configure the stream with the result. */
 	if (gst_structure_has_name(s, "video/x-raw")) {
@@ -376,15 +381,22 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 	stream_cfg.size.height = height;
 
 	/* Configure colorimetry */
+		
 	if (gst_structure_has_field(s, "colorimetry")) {
-		const gchar *colorimetry_caps = gst_structure_get_string(s, "colorimetry");
-		GstVideoColorimetry colorimetry;
-
-		if(gst_video_colorimetry_from_string(&colorimetry, colorimetry_caps)) {
-			stream_cfg.colorSpace = colorspace_from_colorimetry(colorimetry);
-		} else {
-			g_critical("Invalid colorimetry %s", colorimetry_caps);
+		GstCaps *ncaps = gst_caps_copy_nth(caps, colorimetry_index);
+		ncaps = gst_caps_normalize(ncaps);
+		for (i = 0; i < gst_caps_get_size(ncaps); i++) {
+			GstStructure *nstructure = gst_caps_get_structure(ncaps, i);
+			const gchar *colorimetry_caps = gst_structure_get_string(nstructure, "colorimetry");
+			GstVideoColorimetry colorimetry;
+			if(gst_video_colorimetry_from_string(&colorimetry, colorimetry_caps)) {
+				stream_cfg.colorSpace = colorspace_from_colorimetry(colorimetry);
+			} else {
+				g_critical("Invalid colorimetry %s", colorimetry_caps);
+			}
 		}
+
+
 	}
 }
 
