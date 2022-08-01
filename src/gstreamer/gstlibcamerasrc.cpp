@@ -490,8 +490,11 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	g_assert(state->config_->size() == state->srcpads_.size());
 
 	for (gsize i = 0; i < state->srcpads_.size(); i++) {
+		gint best_structure;
 		GstPad *srcpad = state->srcpads_[i];
 		StreamConfiguration &stream_cfg = state->config_->at(i);
+		StreamConfiguration dup_config = state->config_->at(i);
+		guint j;
 
 		/* Retrieve the supported caps. */
 		g_autoptr(GstCaps) filter = gst_libcamera_stream_formats_to_caps(stream_cfg.formats());
@@ -503,7 +506,22 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 
 		/* Fixate caps and configure the stream. */
 		caps = gst_caps_make_writable(caps);
-		gst_libcamera_configure_stream_from_caps(stream_cfg, caps);
+		best_structure = gst_libcamera_configure_stream_from_caps(stream_cfg, caps);
+
+		GstCaps *ncaps = gst_caps_copy_nth(caps, best_structure);
+		ncaps = gst_caps_normalize(ncaps);
+
+		for (j = 0; j < gst_caps_get_size(ncaps); j++) {
+			GstStructure *s = gst_caps_get_structure(ncaps, j);
+			gst_libcamera_configure_colorspace_from_caps(stream_cfg, s);
+			const gchar *colorimetry_old = gst_structure_get_string(s, "colorimetry");
+			if (state->config_->validate() != CameraConfiguration::Invalid) {
+				if (gst_libcamera_check_colorspace_from_stream_cfg(stream_cfg, colorimetry_old))
+					break;
+				else
+					stream_cfg = dup_config;
+			}
+		}
 	}
 
 	if (flow_ret != GST_FLOW_OK)

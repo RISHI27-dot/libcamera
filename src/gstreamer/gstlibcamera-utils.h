@@ -16,8 +16,13 @@
 
 GstCaps *gst_libcamera_stream_formats_to_caps(const libcamera::StreamFormats &formats);
 GstCaps *gst_libcamera_stream_configuration_to_caps(const libcamera::StreamConfiguration &stream_cfg);
-void gst_libcamera_configure_stream_from_caps(libcamera::StreamConfiguration &stream_cfg,
+gint gst_libcamera_configure_stream_from_caps(libcamera::StreamConfiguration &stream_cfg,
 					      GstCaps *caps);
+void gst_libcamera_configure_colorspace_from_caps(libcamera::StreamConfiguration &stream_cfg,
+						  GstStructure *s);
+gboolean
+gst_libcamera_check_colorspace_from_stream_cfg(const libcamera::StreamConfiguration &stream_cfg,
+					       const gchar *colorimetry_old);
 #if !GST_CHECK_VERSION(1, 17, 1)
 gboolean gst_task_resume(GstTask *task);
 #endif
