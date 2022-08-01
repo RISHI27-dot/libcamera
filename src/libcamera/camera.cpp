@@ -386,6 +386,17 @@ CameraConfiguration::Status CameraConfiguration::validateColorSpaces(ColorSpaceF
 	if (index < 0 || !(flags & ColorSpaceFlag::StreamsShareColorSpace))
 		return status;
 
+	/*
+	 * \todo Question StreamsShareColorSpace <> an adjusted colorspace
+	 * interation.
+	 */
+	if (config_[index].colorSpace) {
+		ColorSpace oldColorspace = config_[index].colorSpace.value();
+		ColorSpace newColorspace = oldColorspace.adjust(config_[index]);
+		if (oldColorspace != newColorspace)
+			config_[index].colorSpace = newColorspace;
+	}
+
 	/* Make all output color spaces the same, if requested. */
 	for (auto &cfg : config_) {
 		if (!isRaw(cfg.pixelFormat) &&

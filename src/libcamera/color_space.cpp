@@ -13,6 +13,10 @@
 #include <sstream>
 #include <utility>
 
+#include <libcamera/stream.h>
+
+#include "libcamera/internal/formats.h"
+
 /**
  * \file color_space.h
  * \brief Class and enums to represent color spaces
@@ -191,6 +195,63 @@ std::string ColorSpace::toString() const
 	ss << primariesName << "/" << transferName << "/" << encodingName << "/" << rangeName;
 
 	return ss.str();
+}
+
+/**
+ * \brief Adjust colospace when stream configuration contains YUV stream
+ * \param[in] config Stream configuration
+ *
+ * This function adjust the stream's colorspace if it consists a YUV stream
+ * and has no Y'Cbcr encoding specified. The function shall update the
+ * Y'Cbcr encoding based on the transfer function and primaries fields.
+ *
+ * \return The adjusted colorspace
+ */
+ColorSpace
+ColorSpace::adjustYuv(const StreamConfiguration &cfg)
+{
+	ColorSpace cs = *this;
+	bool isYUV = (PixelFormatInfo::info(cfg.pixelFormat).colourEncoding ==
+		      PixelFormatInfo::ColourEncodingYUV);
+
+	if (isYUV && cs.ycbcrEncoding == YcbcrEncoding::None) {
+		if (cs.transferFunction == TransferFunction::Rec709) {
+			switch (cs.primaries) {
+			/* Raw should never happen */
+			case Primaries::Raw:
+			case Primaries::Smpte170m:
+				cs.ycbcrEncoding = YcbcrEncoding::Rec601;
+				break;
+			case Primaries::Rec709:
+				cs.ycbcrEncoding = YcbcrEncoding::Rec709;
+				break;
+			case Primaries::Rec2020:
+				cs.ycbcrEncoding = YcbcrEncoding::Rec2020;
+				break;
+			}
+		} else if (cs.transferFunction == TransferFunction::Srgb) {
+			cs.ycbcrEncoding = YcbcrEncoding::Rec601;
+		}
+
+		/* \todo: Determine if range needs to be adjusted in some cases? */
+	}
+
+	return cs;
+}
+
+/**
+ * \brief Adjust the colorspace depending on the stream configuration
+ * \param[in] config Stream configuration
+ *
+ * This function adjust the stream's colorspace depending on various factors
+ * as reflected by the \a config.
+ *
+ * \return The adjusted colorspace according to the stream configuration
+ */
+ColorSpace
+ColorSpace::adjust(const StreamConfiguration &config)
+{
+	return adjustYuv(config);
 }
 
 /**

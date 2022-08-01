@@ -12,6 +12,8 @@
 
 namespace libcamera {
 
+struct StreamConfiguration;
+
 class ColorSpace
 {
 public:
@@ -59,6 +61,10 @@ public:
 
 	std::string toString() const;
 	static std::string toString(const std::optional<ColorSpace> &colorSpace);
+	ColorSpace adjust(const StreamConfiguration &cfg);
+
+private:
+	ColorSpace adjustYuv(const StreamConfiguration &cfg);
 };
 
 bool operator==(const ColorSpace &lhs, const ColorSpace &rhs);
