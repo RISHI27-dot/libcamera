@@ -2,6 +2,7 @@
 
 stream_tests = [
     ['stream_formats',  'stream_formats.cpp'],
+    ['stream_colorspace', 'stream_colorspace.cpp'],
 ]
 
 foreach t : stream_tests
