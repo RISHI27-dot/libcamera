@@ -399,6 +399,16 @@ gst_libcamera_configure_colorspace_from_caps(StreamConfiguration &stream_cfg,
 	}
 }
 
+gboolean
+gst_libcamera_check_colorspace_form_stream_cfg(const StreamConfiguration &stream_cfg, const gchar *colorimetry_old) {
+	GstVideoColorimetry colorimetry = colorimetry_from_colorspace(stream_cfg.colorSpace.value());
+	gchar *colorimetry_new = gst_video_colorimetry_to_string(&colorimetry);
+	if (colorimetry_new == colorimetry_old) {
+		return true;
+	}
+	return false;
+}
+
 #if !GST_CHECK_VERSION(1, 17, 1)
 gboolean
 gst_task_resume(GstTask *task)

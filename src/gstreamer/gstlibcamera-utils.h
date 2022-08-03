@@ -20,6 +20,9 @@ gint gst_libcamera_configure_stream_from_caps(libcamera::StreamConfiguration &st
 					      GstCaps *caps);
 void gst_libcamera_configure_colorspace_from_caps(libcamera::StreamConfiguration &stream_cfg,
 					 	  GstStructure *s);
+gboolean
+gst_libcamera_check_colorspace_form_stream_cfg(const libcamera::StreamConfiguration &stream_cfg,
+						  const gchar *colorimetry_old);
 #if !GST_CHECK_VERSION(1, 17, 1)
 gboolean gst_task_resume(GstTask *task);
 #endif
