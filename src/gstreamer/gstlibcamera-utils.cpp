@@ -302,13 +302,47 @@ gst_libcamera_stream_configuration_to_caps(const StreamConfiguration &stream_cfg
 	return caps;
 }
 
+static void
+configure_colorspace_from_caps(StreamConfiguration &stream_cfg,
+			       GstStructure *s)
+{
+	if (gst_structure_has_field(s, "colorimetry")) {
+		const gchar *colorimetry_str = gst_structure_get_string(s, "colorimetry");
+		GstVideoColorimetry colorimetry;
+
+		if (!gst_video_colorimetry_from_string(&colorimetry, colorimetry_str))
+			g_critical("Invalid colorimetry %s", colorimetry_str);
+
+		stream_cfg.colorSpace = colorspace_from_colorimetry(colorimetry);
+		/* Check if colorimetry had any identifiers which did not map */
+		if (colorimetry.primaries != GST_VIDEO_COLOR_PRIMARIES_UNKNOWN &&
+		    stream_cfg.colorSpace == ColorSpace::Raw) {
+			GST_ERROR("One or more identifiers could not be mapped for %s colorimetry",
+				  colorimetry_str);
+			stream_cfg.colorSpace = std::nullopt;
+		}
+	}
+}
+
+static gboolean
+check_colorspace(const ColorSpace colorSpace, const gchar *colorimetry_old)
+{
+	GstVideoColorimetry colorimetry = colorimetry_from_colorspace(colorSpace);
+	g_autofree gchar *colorimetry_new = gst_video_colorimetry_to_string(&colorimetry);
+	if (!g_strcmp0(colorimetry_old, colorimetry_new)) {
+		return true;
+	}
+	return false;
+}
+
 void
-gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
+gst_libcamera_configure_stream_from_caps(CameraConfiguration &cam_cfg,
+					 StreamConfiguration &stream_cfg,
 					 GstCaps *caps)
 {
 	GstVideoFormat gst_format = pixel_format_to_gst_format(stream_cfg.pixelFormat);
 	guint i;
-	gint best_fixed = -1, best_in_range = -1;
+	gint best_fixed = -1, best_in_range = -1, colorimetry_index = -1;
 	GstStructure *s;
 
 	/*
@@ -354,10 +388,13 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 	}
 
 	/* Prefer reliable fixed value over ranges */
-	if (best_fixed >= 0)
+	if (best_fixed >= 0) {
 		s = gst_caps_get_structure(caps, best_fixed);
-	else
+		colorimetry_index = best_fixed;
+	} else {
 		s = gst_caps_get_structure(caps, best_in_range);
+		colorimetry_index = best_in_range;
+	}
 
 	if (gst_structure_has_name(s, "video/x-raw")) {
 		const gchar *format = gst_video_format_to_string(gst_format);
@@ -380,6 +417,26 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 	gst_structure_get_int(s, "height", &height);
 	stream_cfg.size.width = width;
 	stream_cfg.size.height = height;
+
+	/* Create new caps, copy the structure with best resolutions
+	 * and normalize the caps.
+	 */
+	GstCaps *ncaps = gst_caps_copy_nth(caps, colorimetry_index);
+	ncaps = gst_caps_normalize(ncaps);
+
+	/* Configure Colorimetry */
+	StreamConfiguration dup_stream_cfg = stream_cfg;
+	for (i = 0; i < gst_caps_get_size(ncaps); i++) {
+		GstStructure *ns = gst_caps_get_structure(ncaps, i);
+		configure_colorspace_from_caps(stream_cfg, ns);
+		g_autofree const gchar *colorimetry_old = gst_structure_get_string(ns, "colorimetry");
+		if (cam_cfg.validate() != CameraConfiguration::Invalid) {
+			if (check_colorspace(stream_cfg.colorSpace.value(), colorimetry_old))
+				break;
+			else
+				stream_cfg = dup_stream_cfg;
+		}
+	}
 }
 
 #if !GST_CHECK_VERSION(1, 17, 1)
