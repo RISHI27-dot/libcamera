@@ -525,8 +525,9 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	for (gsize i = 0; i < state->srcpads_.size(); i++) {
 		GstPad *srcpad = state->srcpads_[i];
 		const StreamConfiguration &stream_cfg = state->config_->at(i);
-
 		g_autoptr(GstCaps) caps = gst_libcamera_stream_configuration_to_caps(stream_cfg);
+		gst_libcamera_controllist_to_caps(state->initControls_, caps);
+
 		if (!gst_pad_push_event(srcpad, gst_event_new_caps(caps))) {
 			flow_ret = GST_FLOW_NOT_NEGOTIATED;
 			break;
