@@ -240,13 +240,18 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 void
 gst_libcamera_configure_controls_from_caps(ControlList &controls, [[maybe_unused]] GstCaps *caps)
 {
-	// read framerate from caps - convert to integer and set to frame_time.
+	/* read framerate from caps - convert to integer and set to frame_time. */
+	GstStructure *s = gst_caps_get_structure(caps, 0);
+	gint fps_n = -1, fps_d = -1;
+	if (gst_structure_has_field(s, "framerate"))
+		gst_structure_get_fraction(s, "framerate", &fps_n, &fps_d);
 
-	guint frame_time = 100;
+	if (fps_n < 0 || fps_d < 0)
+		return;
+
+	gdouble frame_duration = static_cast<double>(fps_d) / static_cast<double>(fps_n) * 1000000.0;
 	controls.set(controls::FrameDurationLimits,
-		     Span<const int64_t, 2>({ frame_time, frame_time }));
-
-	// DEBUG:: use ControlList::get() api to see frameDurationLimits is really set in controls
+		     Span<const int64_t, 2>({ static_cast<int64_t>(frame_duration), static_cast<int64_t>(frame_duration) }));
 }
 
 #if !GST_CHECK_VERSION(1, 17, 1)
