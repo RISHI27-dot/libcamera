@@ -8,6 +8,7 @@
 
 #include "gstlibcamera-utils.h"
 
+#include <libcamera/control_ids.h>
 #include <libcamera/formats.h>
 
 using namespace libcamera;
@@ -405,6 +406,75 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 
 		stream_cfg.colorSpace = colorspace_from_colorimetry(colorimetry);
 	}
+}
+
+void gst_libcamera_get_framerate_from_caps([[maybe_unused]] GstCaps *caps,
+					   GstStructure *container)
+{
+	GstStructure *s = gst_caps_get_structure(caps, 0);
+	gint fps_n = 0, fps_d = 1;
+
+	if (gst_structure_has_field_typed(s, "framerate", GST_TYPE_FRACTION)) {
+		if (gst_structure_get_fraction(s, "framerate", &fps_n, &fps_d))
+			gst_structure_set(container, "framerate", GST_TYPE_FRACTION, fps_n, fps_d, nullptr);
+		else
+			GST_WARNING("invalid framerate in the caps.");
+	}
+}
+
+void gst_libcamera_clamp_and_set_frameduration(ControlList &controls, const ControlInfoMap &camera_controls,
+					       GstStructure *container)
+{
+	gboolean in_bounds = false;
+	gint fps_caps_n, fps_caps_d, fps_n, fps_d;
+
+	if (!gst_structure_has_field_typed(container, "framerate", GST_TYPE_FRACTION))
+		return;
+
+	auto iterFrameDuration = camera_controls.find(controls::FrameDurationLimits.id());
+	if (iterFrameDuration == camera_controls.end()) {
+		GST_WARNING("Valid bounds for FrameDuration not found");
+		return;
+	}
+
+	const GValue *framerate = gst_structure_get_value(container, "framerate");
+
+	fps_caps_n = gst_value_get_fraction_numerator(framerate);
+	fps_caps_d = gst_value_get_fraction_denominator(framerate);
+
+	int64_t frame_duration = (fps_caps_d * 1000000.0) / fps_caps_n;
+	int64_t min_frame_duration = iterFrameDuration->second.min().get<int64_t>();
+	int64_t max_frame_duration = iterFrameDuration->second.max().get<int64_t>();
+
+	if (frame_duration < min_frame_duration) {
+		frame_duration = min_frame_duration;
+	} else if (frame_duration > max_frame_duration) {
+		frame_duration = max_frame_duration;
+	} else {
+		in_bounds = true;
+	}
+
+	if (!in_bounds) {
+		double framerate_clamped = 1000000.0 / frame_duration;
+		gst_util_double_to_fraction(framerate_clamped, &fps_n, &fps_d);
+		gst_structure_set(container, "framerate", GST_TYPE_FRACTION, fps_n, fps_d, nullptr);
+	}
+
+	controls.set(controls::FrameDurationLimits,
+		     Span<const int64_t, 2>({ frame_duration, frame_duration }));
+}
+
+void gst_libcamera_framerate_to_caps(GstCaps *caps, const GValue *container)
+{
+	if (!GST_VALUE_HOLDS_FRACTION(container))
+		return;
+
+	GstStructure *s = gst_caps_get_structure(caps, 0);
+	gint fps_caps_n, fps_caps_d;
+
+	fps_caps_n = gst_value_get_fraction_numerator(container);
+	fps_caps_d = gst_value_get_fraction_denominator(container);
+	gst_structure_set(s, "framerate", GST_TYPE_FRACTION, fps_caps_n, fps_caps_d, nullptr);
 }
 
 #if !GST_CHECK_VERSION(1, 17, 1)
