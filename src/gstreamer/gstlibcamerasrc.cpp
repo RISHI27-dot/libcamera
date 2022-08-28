@@ -131,6 +131,7 @@ struct GstLibcameraSrcState {
 	std::queue<std::unique_ptr<RequestWrap>> completedRequests_
 		LIBCAMERA_TSA_GUARDED_BY(lock_);
 
+	ControlList initControls_;
 	guint group_id_;
 
 	int queueRequest();
@@ -462,6 +463,8 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	GstFlowReturn flow_ret = GST_FLOW_OK;
 	gint ret;
 
+	GstStructure *container = gst_structure_new_empty("container");
+
 	GST_DEBUG_OBJECT(self, "Streaming thread has started");
 
 	gint stream_id_num = 0;
@@ -496,6 +499,7 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		/* Retrieve the supported caps. */
 		g_autoptr(GstCaps) filter = gst_libcamera_stream_formats_to_caps(stream_cfg.formats());
 		g_autoptr(GstCaps) caps = gst_pad_peer_query_caps(srcpad, filter);
+
 		if (gst_caps_is_empty(caps)) {
 			flow_ret = GST_FLOW_NOT_NEGOTIATED;
 			break;
@@ -504,6 +508,7 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		/* Fixate caps and configure the stream. */
 		caps = gst_caps_make_writable(caps);
 		gst_libcamera_configure_stream_from_caps(stream_cfg, caps);
+		gst_libcamera_get_framerate_from_caps(caps, container);
 	}
 
 	if (flow_ret != GST_FLOW_OK)
@@ -524,6 +529,10 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		return;
 	}
 
+	/* Check frame duration bounds within controls::FrameDurationLimits */
+	gst_libcamera_clamp_and_set_frameduration(state->initControls_,
+						  state->cam_->controls(), container);
+
 	/*
 	 * Regardless if it has been modified, create clean caps and push the
 	 * caps event. Downstream will decide if the caps are acceptable.
@@ -531,8 +540,11 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	for (gsize i = 0; i < state->srcpads_.size(); i++) {
 		GstPad *srcpad = state->srcpads_[i];
 		const StreamConfiguration &stream_cfg = state->config_->at(i);
+		const GValue *framerate = gst_structure_get_value(container, "framerate");
 
 		g_autoptr(GstCaps) caps = gst_libcamera_stream_configuration_to_caps(stream_cfg);
+		gst_libcamera_framerate_to_caps(state->initControls_, caps, framerate);
+
 		if (!gst_pad_push_event(srcpad, gst_event_new_caps(caps))) {
 			flow_ret = GST_FLOW_NOT_NEGOTIATED;
 			break;
@@ -566,7 +578,7 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		gst_flow_combiner_add_pad(self->flow_combiner, srcpad);
 	}
 
-	ret = state->cam_->start();
+	ret = state->cam_->start(&state->initControls_);
 	if (ret) {
 		GST_ELEMENT_ERROR(self, RESOURCE, SETTINGS,
 				  ("Failed to start the camera: %s", g_strerror(-ret)),
@@ -576,6 +588,8 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	}
 
 done:
+	state->initControls_.clear();
+	g_free(container);
 	switch (flow_ret) {
 	case GST_FLOW_NOT_NEGOTIATED:
 		GST_ELEMENT_FLOW_ERROR(self, flow_ret);
