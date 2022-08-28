@@ -131,6 +131,7 @@ struct GstLibcameraSrcState {
 	std::queue<std::unique_ptr<RequestWrap>> completedRequests_
 		LIBCAMERA_TSA_GUARDED_BY(lock_);
 
+	ControlList initControls_;
 	guint group_id_;
 
 	int queueRequest();
@@ -461,6 +462,8 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	GstLibcameraSrcState *state = self->state;
 	GstFlowReturn flow_ret = GST_FLOW_OK;
 	gint ret;
+	GValue *framerate_container = g_new0(GValue, 1);
+	framerate_container = g_value_init(framerate_container, GST_TYPE_FRACTION);
 
 	GST_DEBUG_OBJECT(self, "Streaming thread has started");
 
@@ -496,6 +499,7 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		/* Retrieve the supported caps. */
 		g_autoptr(GstCaps) filter = gst_libcamera_stream_formats_to_caps(stream_cfg.formats());
 		g_autoptr(GstCaps) caps = gst_pad_peer_query_caps(srcpad, filter);
+
 		if (gst_caps_is_empty(caps)) {
 			flow_ret = GST_FLOW_NOT_NEGOTIATED;
 			break;
@@ -504,6 +508,8 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		/* Fixate caps and configure the stream. */
 		caps = gst_caps_make_writable(caps);
 		gst_libcamera_configure_stream_from_caps(stream_cfg, caps);
+		gst_libcamera_get_init_controls_from_caps(state->initControls_, caps,
+							  framerate_container);
 	}
 
 	if (flow_ret != GST_FLOW_OK)
@@ -524,6 +530,7 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		const StreamConfiguration &stream_cfg = state->config_->at(i);
 
 		g_autoptr(GstCaps) caps = gst_libcamera_stream_configuration_to_caps(stream_cfg);
+
 		if (!gst_pad_push_event(srcpad, gst_event_new_caps(caps))) {
 			flow_ret = GST_FLOW_NOT_NEGOTIATED;
 			break;
@@ -542,6 +549,23 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 				  ("Camera::configure() failed with error code %i", ret));
 		gst_task_stop(task);
 		return;
+	}
+
+	/* bind the framerate */
+	gst_libcamera_bind_framerate(state->cam_->controls(), state->initControls_);
+
+	/* Expose the controls in initControls_ throught a new caps event. */
+	for (gsize i = 0; i < state->srcpads_.size(); i++) {
+		GstPad *srcpad = state->srcpads_[i];
+		const StreamConfiguration &stream_cfg = state->config_->at(i);
+
+		g_autoptr(GstCaps) caps = gst_libcamera_init_controls_to_caps(state->initControls_,
+									      stream_cfg, framerate_container);
+
+		if (!gst_pad_push_event(srcpad, gst_event_new_caps(caps))) {
+			flow_ret = GST_FLOW_NOT_NEGOTIATED;
+			break;
+		}
 	}
 
 	self->allocator = gst_libcamera_allocator_new(state->cam_, state->config_.get());
@@ -566,7 +590,7 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		gst_flow_combiner_add_pad(self->flow_combiner, srcpad);
 	}
 
-	ret = state->cam_->start();
+	ret = state->cam_->start(&state->initControls_);
 	if (ret) {
 		GST_ELEMENT_ERROR(self, RESOURCE, SETTINGS,
 				  ("Failed to start the camera: %s", g_strerror(-ret)),
@@ -576,6 +600,8 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	}
 
 done:
+	state->initControls_.clear();
+	g_free(framerate_container);
 	switch (flow_ret) {
 	case GST_FLOW_NOT_NEGOTIATED:
 		GST_ELEMENT_FLOW_ERROR(self, flow_ret);

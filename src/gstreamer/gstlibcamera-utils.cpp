@@ -8,6 +8,7 @@
 
 #include "gstlibcamera-utils.h"
 
+#include <libcamera/control_ids.h>
 #include <libcamera/formats.h>
 
 using namespace libcamera;
@@ -403,6 +404,121 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 
 		stream_cfg.colorSpace = colorspace_from_colorimetry(colorimetry);
 	}
+}
+
+void
+gst_libcamera_get_init_controls_from_caps(ControlList &controls, [[maybe_unused]] GstCaps *caps,
+					  GValue *framerate_container)
+{
+	GstStructure *s = gst_caps_get_structure(caps, 0);
+	gint fps_n = -1, fps_d = -1;
+
+	if (gst_structure_has_field_typed(s, "framerate", GST_TYPE_FRACTION)) {
+		if (!gst_structure_get_fraction(s, "framerate", &fps_n, &fps_d)) {
+			GST_WARNING("invalid framerate in the caps.");
+			return;
+		}
+	}
+
+	if (fps_n < 0 || fps_d < 0)
+		return;
+
+	gst_value_set_fraction(framerate_container, fps_n, fps_d);
+	int64_t frame_duration = (fps_d * 1000000.0) / fps_n;
+
+	controls.set(controls::FrameDurationLimits,
+		     Span<const int64_t, 2>({ frame_duration, frame_duration }));
+}
+
+void
+gst_libcamera_bind_framerate(const ControlInfoMap &camera_controls, ControlList &controls)
+{
+	gboolean isBound = true;
+	auto iterFrameDuration = camera_controls.find(controls::FrameDurationLimits.id());
+
+	if (!(iterFrameDuration != camera_controls.end() &&
+	      controls.contains(controls::FRAME_DURATION_LIMITS)))
+		return;
+
+	int64_t frame_duration = controls.get(controls::FrameDurationLimits).value()[0];
+	int64_t min_frame_duration = iterFrameDuration->second.min().get<int64_t>();
+	int64_t max_frame_duration = iterFrameDuration->second.max().get<int64_t>();
+
+	if (frame_duration < min_frame_duration) {
+		frame_duration = min_frame_duration;
+	} else if (frame_duration > max_frame_duration) {
+		frame_duration = max_frame_duration;
+	} else {
+		isBound = false;
+	}
+
+	if (isBound)
+		controls.set(controls::FrameDurationLimits,
+			     Span<const int64_t, 2>({ frame_duration, frame_duration }));
+}
+
+gboolean
+gst_libcamera_get_framerate_from_init_controls(const ControlList &controls, GValue *framerate,
+					       GValue *framerate_container)
+{
+	gint fps_caps_n, fps_caps_d, numerator, denominator;
+
+	fps_caps_n = gst_value_get_fraction_numerator(framerate_container);
+	fps_caps_d = gst_value_get_fraction_denominator(framerate_container);
+
+	if (!controls.contains(controls::FRAME_DURATION_LIMITS))
+		return false;
+
+	double framerate_ret = 1000000 / static_cast<double>(controls.get(controls::FrameDurationLimits).value()[0]);
+	gst_util_double_to_fraction(framerate_ret, &numerator, &denominator);
+	gst_value_set_fraction(framerate, numerator, denominator);
+
+	if (fps_caps_n / fps_caps_d == numerator / denominator) {
+		return true;
+	}
+	return false;
+}
+
+GstCaps *
+gst_libcamera_init_controls_to_caps(const ControlList &controls, const StreamConfiguration &stream_cfg,
+				    GValue *framerate_container)
+{
+	GstCaps *caps = gst_caps_new_empty();
+	GstStructure *s = bare_structure_from_format(stream_cfg.pixelFormat);
+	gboolean ret;
+	GValue *framerate = g_new0(GValue, 1);
+	g_value_init(framerate, GST_TYPE_FRACTION);
+
+	ret = gst_libcamera_get_framerate_from_init_controls(controls, framerate, framerate_container);
+
+	gst_structure_set(s,
+			  "width", G_TYPE_INT, stream_cfg.size.width,
+			  "height", G_TYPE_INT, stream_cfg.size.height,
+			  nullptr);
+
+	if (ret) {
+		gint numerator, denominator;
+		numerator = gst_value_get_fraction_numerator(framerate_container);
+		denominator = gst_value_get_fraction_denominator(framerate_container);
+		gst_structure_set(s, "framerate", GST_TYPE_FRACTION, numerator, denominator, nullptr);
+	} else {
+		gst_structure_set(s, "framerate", GST_TYPE_FRACTION, 0, 1, nullptr);
+	}
+
+	if (stream_cfg.colorSpace) {
+		GstVideoColorimetry colorimetry = colorimetry_from_colorspace(stream_cfg.colorSpace.value());
+		gchar *colorimetry_str = gst_video_colorimetry_to_string(&colorimetry);
+
+		if (colorimetry_str)
+			gst_structure_set(s, "colorimetry", G_TYPE_STRING, colorimetry_str, nullptr);
+		else
+			g_error("Got invalid colorimetry from ColorSpace: %s",
+				ColorSpace::toString(stream_cfg.colorSpace).c_str());
+	}
+
+	gst_caps_append_structure(caps, s);
+	g_free(framerate);
+	return caps;
 }
 
 #if !GST_CHECK_VERSION(1, 17, 1)
