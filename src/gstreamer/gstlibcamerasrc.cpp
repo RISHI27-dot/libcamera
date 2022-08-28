@@ -131,6 +131,7 @@ struct GstLibcameraSrcState {
 	std::queue<std::unique_ptr<RequestWrap>> completedRequests_
 		LIBCAMERA_TSA_GUARDED_BY(lock_);
 
+	ControlList initControls_;
 	guint group_id_;
 
 	int queueRequest();
@@ -496,6 +497,7 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		/* Retrieve the supported caps. */
 		g_autoptr(GstCaps) filter = gst_libcamera_stream_formats_to_caps(stream_cfg.formats());
 		g_autoptr(GstCaps) caps = gst_pad_peer_query_caps(srcpad, filter);
+
 		if (gst_caps_is_empty(caps)) {
 			flow_ret = GST_FLOW_NOT_NEGOTIATED;
 			break;
@@ -504,6 +506,7 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		/* Fixate caps and configure the stream. */
 		caps = gst_caps_make_writable(caps);
 		gst_libcamera_configure_stream_from_caps(stream_cfg, caps);
+		gst_libcamera_get_init_controls_from_caps(state->initControls_, caps);
 	}
 
 	if (flow_ret != GST_FLOW_OK)
@@ -515,6 +518,16 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		goto done;
 	}
 
+	ret = state->cam_->configure(state->config_.get());
+	if (ret) {
+		GST_ELEMENT_ERROR(self, RESOURCE, SETTINGS,
+				  ("Failed to configure camera: %s", g_strerror(-ret)),
+				  ("Camera::configure() failed with error code %i", ret));
+		gst_task_stop(task);
+		return;
+	}
+	gst_libcamera_set_frame_duration_bounds(state->cam_->controls(), state->initControls_);
+
 	/*
 	 * Regardless if it has been modified, create clean caps and push the
 	 * caps event. Downstream will decide if the caps are acceptable.
@@ -524,6 +537,8 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		const StreamConfiguration &stream_cfg = state->config_->at(i);
 
 		g_autoptr(GstCaps) caps = gst_libcamera_stream_configuration_to_caps(stream_cfg);
+		gst_libcamera_controllist_to_caps(state->initControls_, caps);
+
 		if (!gst_pad_push_event(srcpad, gst_event_new_caps(caps))) {
 			flow_ret = GST_FLOW_NOT_NEGOTIATED;
 			break;
@@ -533,15 +548,6 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		GstSegment segment;
 		gst_segment_init(&segment, GST_FORMAT_TIME);
 		gst_pad_push_event(srcpad, gst_event_new_segment(&segment));
-	}
-
-	ret = state->cam_->configure(state->config_.get());
-	if (ret) {
-		GST_ELEMENT_ERROR(self, RESOURCE, SETTINGS,
-				  ("Failed to configure camera: %s", g_strerror(-ret)),
-				  ("Camera::configure() failed with error code %i", ret));
-		gst_task_stop(task);
-		return;
 	}
 
 	self->allocator = gst_libcamera_allocator_new(state->cam_, state->config_.get());
@@ -566,7 +572,7 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 		gst_flow_combiner_add_pad(self->flow_combiner, srcpad);
 	}
 
-	ret = state->cam_->start();
+	ret = state->cam_->start(&state->initControls_);
 	if (ret) {
 		GST_ELEMENT_ERROR(self, RESOURCE, SETTINGS,
 				  ("Failed to start the camera: %s", g_strerror(-ret)),
@@ -576,6 +582,7 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	}
 
 done:
+	state->initControls_.clear();
 	switch (flow_ret) {
 	case GST_FLOW_NOT_NEGOTIATED:
 		GST_ELEMENT_FLOW_ERROR(self, flow_ret);

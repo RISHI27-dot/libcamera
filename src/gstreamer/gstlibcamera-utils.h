@@ -9,6 +9,7 @@
 #pragma once
 
 #include <libcamera/camera_manager.h>
+#include <libcamera/controls.h>
 #include <libcamera/stream.h>
 
 #include <gst/gst.h>
@@ -18,6 +19,10 @@ GstCaps *gst_libcamera_stream_formats_to_caps(const libcamera::StreamFormats &fo
 GstCaps *gst_libcamera_stream_configuration_to_caps(const libcamera::StreamConfiguration &stream_cfg);
 void gst_libcamera_configure_stream_from_caps(libcamera::StreamConfiguration &stream_cfg,
 					      GstCaps *caps);
+void gst_libcamera_get_init_controls_from_caps(libcamera::ControlList &controls, GstCaps *caps);
+void gst_libcamera_set_frame_duration_bounds(const libcamera::ControlInfoMap &defaults, libcamera::ControlList &current);
+void gst_libcamera_controllist_to_caps(const libcamera::ControlList &controls, GstCaps *caps);
+
 #if !GST_CHECK_VERSION(1, 17, 1)
 gboolean gst_task_resume(GstTask *task);
 #endif
