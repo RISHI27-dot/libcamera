@@ -296,6 +296,7 @@ gst_libcamera_stream_configuration_to_caps(const StreamConfiguration &stream_cfg
 	gst_structure_set(s,
 			  "width", G_TYPE_INT, stream_cfg.size.width,
 			  "height", G_TYPE_INT, stream_cfg.size.height,
+			  "interlace-mode", G_TYPE_STRING, "progressive",
 			  nullptr);
 
 	if (stream_cfg.colorSpace) {
