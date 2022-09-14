@@ -316,9 +316,9 @@ gst_libcamera_stream_configuration_to_caps(const StreamConfiguration &stream_cfg
 	return caps;
 }
 
-void
-gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
-					 GstCaps *caps)
+void gst_libcamera_configure_stream_from_caps(std::unique_ptr<CameraConfiguration> &cam_cfg,
+					      StreamConfiguration &stream_cfg,
+					      GstCaps *caps)
 {
 	GstVideoFormat gst_format = pixel_format_to_gst_format(stream_cfg.pixelFormat);
 	guint i;
@@ -395,15 +395,46 @@ gst_libcamera_configure_stream_from_caps(StreamConfiguration &stream_cfg,
 	stream_cfg.size.width = width;
 	stream_cfg.size.height = height;
 
-	/* Configure colorimetry */
-	if (gst_structure_has_field(s, "colorimetry")) {
-		const gchar *colorimetry_str = gst_structure_get_string(s, "colorimetry");
-		GstVideoColorimetry colorimetry;
+	const GValue *colorimetry_ = gst_structure_get_value(s, "colorimetry");
+	if (!colorimetry_)
+		return;
 
-		if (!gst_video_colorimetry_from_string(&colorimetry, colorimetry_str))
-			g_critical("Invalid colorimetry %s", colorimetry_str);
+	/* Configure Colorimetry */
+	GstVideoColorimetry colorimetry;
+	if (GST_VALUE_HOLDS_LIST(colorimetry_)) {
+		StreamConfiguration pristine_stream_cfg = stream_cfg;
+		for (i = 0; i < gst_value_list_get_size(colorimetry_); i++) {
+			const GValue *val = gst_value_list_get_value(colorimetry_, i);
+
+			if (!gst_video_colorimetry_from_string(&colorimetry, g_value_get_string(val))) {
+				g_warning("Invalid colorimetry %s, trying next option", g_value_get_string(val));
+				continue;
+			}
+
+			std::optional<ColorSpace> clrSpace = colorspace_from_colorimetry(colorimetry);
+			stream_cfg.colorSpace = clrSpace;
+
+			/* Validate the configuration and check if the requested
+			 * colorimetry can be applied to the sensor. Otherwise,
+			 * restore the configuration back to pristine one.
+			 */
+			if (cam_cfg->validate() != CameraConfiguration::Invalid) {
+				/* Check the colorspace returned after validation, with the colorspace before validation */
+				if (stream_cfg.colorSpace == clrSpace) {
+					g_print("Selected colorimetry %s\n", gst_video_colorimetry_to_string(&colorimetry));
+					break;
+				} else {
+					stream_cfg = pristine_stream_cfg;
+				}
+			}
+		}
+	} else if (G_VALUE_HOLDS_STRING(colorimetry_)) {
+		if (!gst_video_colorimetry_from_string(&colorimetry, g_value_get_string(colorimetry_)))
+			g_critical("Invalid colorimetry %s", g_value_get_string(colorimetry_));
 
 		stream_cfg.colorSpace = colorspace_from_colorimetry(colorimetry);
+	} else {
+		GST_WARNING("colorimetry field type should only be string or list.");
 	}
 }
 
